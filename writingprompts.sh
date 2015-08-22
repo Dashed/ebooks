@@ -22,7 +22,7 @@ prompt_downloader () {
     comment_id="$1"
 
     # fetch comments
-    comments=$(curl -s "https://www.reddit.com/comments/$comment_id.json?depth=0&limit=$STORIES_PER_PROMPT&sort=confidence&showmore=false")
+    comments=$(curl -s "https://www.reddit.com/comments/$comment_id.json?depth=1&limit=$STORIES_PER_PROMPT&sort=confidence&showmore=false")
 
     # fetch prompt info
     prompt_info=$(echo "$comments" | jq '.[0].data.children[] | {selftext: .data.selftext, author: .data.author, title: .data.title}')
@@ -48,10 +48,17 @@ prompt_downloader () {
     echo -e '\n\n' >> "$MD_FILE"
 
     # fetch stories
-    # stories=$(echo "$comments" | jq '.[1].data.children[] | {story: .data.body, author: .data.author}')
-    stories=$(echo "$comments" | jq --raw-output '.[1].data.children[] | "## \(.data.author) \n\n \(.data.body) \n\n"')
+    raw_stories=$(echo "$comments" | jq '.[1].data.children')
+    END=$(echo "$raw_stories" | jq '. | length')
 
-    echo "$stories" >> "$MD_FILE"
+    for (( c=0; c<$END; c++ ))
+    do
+        story=$(echo "$raw_stories" | jq ".[$c]")
+        echo "$story" | jq --raw-output '"## \(.data.author)"' >> "$MD_FILE"
+        echo -e '\n' >> "$MD_FILE"
+        echo "$story" | jq --raw-output '"## \(.data.body)"' | pandoc -f markdown -t markdown --base-header-level=3 >> "$MD_FILE"
+        echo -e '\n\n' >> "$MD_FILE"
+    done
 }
 
 # fetch list of prompts
@@ -65,6 +72,6 @@ done <<<"$prompts"
 
 echo "Converting to epub"
 
-pandoc "$MD_FILE" -f markdown -o "$EPUB_FILE"
+pandoc --toc "$MD_FILE" -f markdown -o "$EPUB_FILE"
 
 echo "Done"
